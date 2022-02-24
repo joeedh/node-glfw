@@ -1377,8 +1377,8 @@ NAN_MODULE_INIT(init)
   JS_GLFW_CONSTANT(DISCONNECTED);
 
   // init AntTweakBar
-  atb::AntTweakBar::Initialize(target);
-  atb::Bar::Initialize(target);
+  //atb::AntTweakBar::Initialize(target);
+  //atb::Bar::Initialize(target);
 
   // test scene
   JS_GLFW_SET_METHOD(testScene);

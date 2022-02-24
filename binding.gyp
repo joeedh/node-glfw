@@ -45,7 +45,6 @@
               './deps/windows/lib/<(target_arch)',
               ],
             'libraries': [
-              'FreeImage.lib',
               'AntTweakBar64.lib',
               'glfw3dll.lib',
               'glew32.lib',
