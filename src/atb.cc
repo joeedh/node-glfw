@@ -1,3 +1,4 @@
+#if 0
 #include "atb.h"
 
 #include <cstring>
@@ -51,8 +52,8 @@ NAN_MODULE_INIT(AntTweakBar::Initialize)
 
   //DEFINE_ATB_CONSTANT(CDSTRING);
 
-  constructor_template.Reset(ctor->GetFunction());
-  Nan::Set(target, JS_STR("AntTweakBar"), ctor->GetFunction());
+  //constructor_template.Reset(ctor->GetFunction());
+  //Nan::Set(target, JS_STR("AntTweakBar"), ctor->GetFunction());
 }
 
 NAN_METHOD(AntTweakBar::New) {
@@ -65,7 +66,7 @@ NAN_METHOD(AntTweakBar::New) {
   info.GetReturnValue().Set(info.This());
 }
 
-AntTweakBar::AntTweakBar(Handle<Object> wrapper)
+AntTweakBar::AntTweakBar(Local<Object> wrapper)
 {
 }
 
@@ -87,8 +88,13 @@ NAN_METHOD(AntTweakBar::Terminate) {
 
 NAN_METHOD(AntTweakBar::WindowSize) {
   Nan::HandleScope scope;
-  unsigned int w=info[0]->Uint32Value();
-  unsigned int h=info[1]->Uint32Value();
+  
+  unsigned int w=512;
+  unsigned int h=512;
+
+  info[0]->Uint32Value(v8::Isolate::GetCurrent()->GetCurrentContext()).To(&w);
+  info[1]->Uint32Value(v8::Isolate::GetCurrent()->GetCurrentContext()).To(&h);
+
   TwWindowSize(w,h);
   return;
 }
@@ -113,7 +119,7 @@ NAN_METHOD(AntTweakBar::Draw) {
 NAN_METHOD(AntTweakBar::Define) {
   Nan::HandleScope scope;
 
-  String::Utf8Value str(info[0]);
+  String::Utf8Value str(v8::Isolate::GetCurrent(), info[0]);
   TwDefine(*str);
 
   return;
@@ -122,9 +128,9 @@ NAN_METHOD(AntTweakBar::Define) {
 NAN_METHOD(AntTweakBar::DefineEnum) {
   Nan::HandleScope scope;
 
-  String::Utf8Value str(info[0]);
+  String::Utf8Value str(v8::Isolate::GetCurrent(), info[0]);
   Local<Array> arr=Local<Array>::Cast(info[1]);
-  int num=info[2]->IsUndefined() ? arr->Length() : info[2]->Uint32Value();
+  int num=info[2]->IsUndefined() ? arr->Length() : info[2]->Uint32Value(v8::Isolate::GetCurrent()->GetCurrentContext())->toChecked();
 
   TwEnumVal *vals=new TwEnumVal[num];
   for(int i=0;i<num;i++) {
@@ -183,7 +189,7 @@ NAN_METHOD(Bar::New) {
   info.GetReturnValue().Set(info.This());
 }
 
-Bar::Bar(Handle<Object> wrapper) : bar(NULL)
+Bar::Bar(Local<Object> wrapper) : bar(NULL)
 {
 }
 
@@ -481,3 +487,4 @@ NAN_METHOD(Bar::AddButton) {
 }
 
 } // namespace atb
+#endif

@@ -30,12 +30,15 @@ NAN_METHOD(Terminate) {
 
 NAN_METHOD(GetVersion) {
   Nan::HandleScope scope;
+
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
   int major, minor, rev;
   glfwGetVersion(&major,&minor,&rev);
   Local<Array> arr=Nan::New<Array>(3);
-  arr->Set(JS_STR("major"),JS_INT(major));
-  arr->Set(JS_STR("minor"),JS_INT(minor));
-  arr->Set(JS_STR("rev"),JS_INT(rev));
+  arr->Set(ctx, JS_STR("major"),JS_INT(major));
+  arr->Set(ctx, JS_STR("minor"),JS_INT(minor));
+  arr->Set(ctx, JS_STR("rev"),JS_INT(rev));
   info.GetReturnValue().Set(arr);
 }
 
@@ -54,7 +57,9 @@ NAN_METHOD(GetTime) {
 
 NAN_METHOD(SetTime) {
   Nan::HandleScope scope;
-  double time = info[0]->NumberValue();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  double time = info[0]->NumberValue(ctx).ToChecked();
   glfwSetTime(time);
   return;
 }
@@ -65,6 +70,9 @@ NAN_METHOD(SetTime) {
 
 NAN_METHOD(GetMonitors) {
   Nan::HandleScope scope;
+
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
   int monitor_count, mode_count, xpos, ypos, width, height;
   int i, j;
   GLFWmonitor **monitors = glfwGetMonitors(&monitor_count);
@@ -76,37 +84,37 @@ NAN_METHOD(GetMonitors) {
   Local<Array> js_modes;
   for(i=0; i<monitor_count; i++){
     js_monitor = Nan::New<Object>();
-    js_monitor->Set(JS_STR("is_primary"), JS_BOOL(monitors[i] == primary));
-    js_monitor->Set(JS_STR("index"), JS_INT(i));
+    js_monitor->Set(ctx, JS_STR("is_primary"), JS_BOOL(monitors[i] == primary));
+    js_monitor->Set(ctx, JS_STR("index"), JS_INT(i));
 
-    js_monitor->Set(JS_STR("name"), JS_STR(glfwGetMonitorName(monitors[i])));
+    js_monitor->Set(ctx, JS_STR("name"), JS_STR(glfwGetMonitorName(monitors[i])));
 
     glfwGetMonitorPos(monitors[i], &xpos, &ypos);
-    js_monitor->Set(JS_STR("pos_x"), JS_INT(xpos));
-    js_monitor->Set(JS_STR("pos_y"), JS_INT(ypos));
+    js_monitor->Set(ctx, JS_STR("pos_x"), JS_INT(xpos));
+    js_monitor->Set(ctx, JS_STR("pos_y"), JS_INT(ypos));
 
     glfwGetMonitorPhysicalSize(monitors[i], &width, &height);
-    js_monitor->Set(JS_STR("width_mm"), JS_INT(width));
-    js_monitor->Set(JS_STR("height_mm"), JS_INT(height));
+    js_monitor->Set(ctx, JS_STR("width_mm"), JS_INT(width));
+    js_monitor->Set(ctx, JS_STR("height_mm"), JS_INT(height));
 
     mode = glfwGetVideoMode(monitors[i]);
-    js_monitor->Set(JS_STR("width"), JS_INT(mode->width));
-    js_monitor->Set(JS_STR("height"), JS_INT(mode->height));
-    js_monitor->Set(JS_STR("rate"), JS_INT(mode->refreshRate));
+    js_monitor->Set(ctx, JS_STR("width"), JS_INT(mode->width));
+    js_monitor->Set(ctx, JS_STR("height"), JS_INT(mode->height));
+    js_monitor->Set(ctx, JS_STR("rate"), JS_INT(mode->refreshRate));
 
     modes = glfwGetVideoModes(monitors[i], &mode_count);
     js_modes = Nan::New<Array>(mode_count);
     for(j=0; j<mode_count; j++){
       js_mode = Nan::New<Object>();
-      js_mode->Set(JS_STR("width"), JS_INT(modes[j].width));
-      js_mode->Set(JS_STR("height"), JS_INT(modes[j].height));
-      js_mode->Set(JS_STR("rate"), JS_INT(modes[j].refreshRate));
+      js_mode->Set(ctx, JS_STR("width"), JS_INT(modes[j].width));
+      js_mode->Set(ctx, JS_STR("height"), JS_INT(modes[j].height));
+      js_mode->Set(ctx, JS_STR("rate"), JS_INT(modes[j].refreshRate));
       // NOTE: Are color bits necessary?
-      js_modes->Set(JS_INT(j), js_mode);
+      js_modes->Set(ctx, JS_INT(j), js_mode);
     }
-    js_monitor->Set(JS_STR("modes"), js_modes);
+    js_monitor->Set(ctx, JS_STR("modes"), js_modes);
 
-    js_monitors->Set(JS_INT(i), js_monitor);
+    js_monitors->Set(ctx, JS_INT(i), js_monitor);
   }
 
   info.GetReturnValue().Set(js_monitors);
@@ -119,10 +127,15 @@ bool windowCreated=false;
 
 void NAN_INLINE(CallEmitter(int argc, Local<Value> argv[])) {
   Nan::HandleScope scope;
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
   // MakeCallback(glfw_events, "emit", argc, argv);
-  if(Nan::New(glfw_events)->Has(JS_STR("emit"))) {
+  if(Nan::New(glfw_events)->Has(ctx, JS_STR("emit")).ToChecked()) {
     // Local<Function> callback = Nan::New(glfw_events)->Get(JS_STR("emit")).As<Function>();
-    Nan::Callback callback(Nan::New(glfw_events)->Get(JS_STR("emit")).As<Function>());
+    //Nan::Callback callback(Nan::New(glfw_events)->Get(ctx, JS_STR("emit")).As<Function>(ctx));
+    auto func = Nan::New(glfw_events)->Get(ctx, JS_STR("emit")).ToLocalChecked().As<Function>();
+    //auto func = Function::Cast(*func_local.As<Function>());
+    Nan::Callback callback(func);
 
     if (!callback.IsEmpty()) {
       // callback->Call(Context::GetCurrent()->Global(),argc,argv);
@@ -135,11 +148,12 @@ void NAN_INLINE(CallEmitter(int argc, Local<Value> argv[])) {
 void APIENTRY windowPosCB(GLFWwindow *window, int xpos, int ypos) {
   Nan::HandleScope scope;
   //cout<<"resizeCB: "<<w<<" "<<h<<endl;
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
 
   Local<Array> evt=Nan::New<Array>(3);
-  evt->Set(JS_STR("type"),JS_STR("window_pos"));
-  evt->Set(JS_STR("xpos"),JS_INT(xpos));
-  evt->Set(JS_STR("ypos"),JS_INT(ypos));
+  evt->Set(ctx, JS_STR("type"),JS_STR("window_pos"));
+  evt->Set(ctx, JS_STR("xpos"),JS_INT(xpos));
+  evt->Set(ctx, JS_STR("ypos"),JS_INT(ypos));
 
   Local<Value> argv[2] = {
     JS_STR("window_pos"), // event name
@@ -152,11 +166,12 @@ void APIENTRY windowPosCB(GLFWwindow *window, int xpos, int ypos) {
 void APIENTRY windowSizeCB(GLFWwindow *window, int w, int h) {
   Nan::HandleScope scope;
   //cout<<"resizeCB: "<<w<<" "<<h<<endl;
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
 
   Local<Array> evt=Nan::New<Array>(3);
-  evt->Set(JS_STR("type"),JS_STR("resize"));
-  evt->Set(JS_STR("width"),JS_INT(w));
-  evt->Set(JS_STR("height"),JS_INT(h));
+  evt->Set(ctx, JS_STR("type"),JS_STR("resize"));
+  evt->Set(ctx, JS_STR("width"),JS_INT(w));
+  evt->Set(ctx, JS_STR("height"),JS_INT(h));
 
   Local<Value> argv[2] = {
     JS_STR("resize"), // event name
@@ -169,11 +184,12 @@ void APIENTRY windowSizeCB(GLFWwindow *window, int w, int h) {
 void APIENTRY windowFramebufferSizeCB(GLFWwindow *window, int w, int h) {
   Nan::HandleScope scope;
   //cout<<"resizeCB: "<<w<<" "<<h<<endl;
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
 
   Local<Array> evt=Nan::New<Array>(3);
-  evt->Set(JS_STR("type"),JS_STR("framebuffer_resize"));
-  evt->Set(JS_STR("width"),JS_INT(w));
-  evt->Set(JS_STR("height"),JS_INT(h));
+  evt->Set(ctx, JS_STR("type"),JS_STR("framebuffer_resize"));
+  evt->Set(ctx, JS_STR("width"),JS_INT(w));
+  evt->Set(ctx, JS_STR("height"),JS_INT(h));
 
   Local<Value> argv[2] = {
     JS_STR("framebuffer_resize"), // event name
@@ -195,10 +211,11 @@ void APIENTRY windowCloseCB(GLFWwindow *window) {
 
 void APIENTRY windowRefreshCB(GLFWwindow *window) {
   Nan::HandleScope scope;
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
 
   Local<Array> evt=Nan::New<Array>(2);
-  evt->Set(JS_STR("type"),JS_STR("refresh"));
-  evt->Set(JS_STR("window"),JS_NUM((uint64_t) window));
+  evt->Set(ctx, JS_STR("type"),JS_STR("refresh"));
+  evt->Set(ctx, JS_STR("window"),JS_NUM((uint64_t) window));
 
   Local<Value> argv[2] = {
     JS_STR("refresh"), // event name
@@ -210,10 +227,11 @@ void APIENTRY windowRefreshCB(GLFWwindow *window) {
 
 void APIENTRY windowIconifyCB(GLFWwindow *window, int iconified) {
   Nan::HandleScope scope;
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
 
   Local<Array> evt=Nan::New<Array>(2);
-  evt->Set(JS_STR("type"),JS_STR("iconified"));
-  evt->Set(JS_STR("iconified"),JS_BOOL(iconified));
+  evt->Set(ctx, JS_STR("type"),JS_STR("iconified"));
+  evt->Set(ctx, JS_STR("iconified"),JS_BOOL(iconified));
 
   Local<Value> argv[2] = {
     JS_STR("iconified"), // event name
@@ -225,10 +243,11 @@ void APIENTRY windowIconifyCB(GLFWwindow *window, int iconified) {
 
 void APIENTRY windowFocusCB(GLFWwindow *window, int focused) {
   Nan::HandleScope scope;
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
 
   Local<Array> evt=Nan::New<Array>(2);
-  evt->Set(JS_STR("type"),JS_STR("focused"));
-  evt->Set(JS_STR("focused"),JS_BOOL(focused));
+  evt->Set(ctx, JS_STR("type"),JS_STR("focused"));
+  evt->Set(ctx, JS_STR("focused"),JS_BOOL(focused));
 
   Local<Value> argv[2] = {
     JS_STR("focused"), // event name
@@ -313,16 +332,17 @@ static int jsKeyCode[]={
 
 void APIENTRY keyCB(GLFWwindow *window, int key, int scancode, int action, int mods) {
   const char *actionNames = "keyup\0  keydown\0keypress";
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
 
   if(!TwEventKeyGLFW(key,action)) {
     Nan::HandleScope scope;
 
     Local<Array> evt=Nan::New<Array>(7);
-    evt->Set(JS_STR("type"), JS_STR( &actionNames[action << 3] ));
-    evt->Set(JS_STR("ctrlKey"),JS_BOOL(mods & GLFW_MOD_CONTROL));
-    evt->Set(JS_STR("shiftKey"),JS_BOOL(mods & GLFW_MOD_SHIFT));
-    evt->Set(JS_STR("altKey"),JS_BOOL(mods & GLFW_MOD_ALT));
-    evt->Set(JS_STR("metaKey"),JS_BOOL(mods & GLFW_MOD_SUPER));
+    evt->Set(ctx, JS_STR("type"), JS_STR( &actionNames[action << 3] ));
+    evt->Set(ctx, JS_STR("ctrlKey"),JS_BOOL(mods & GLFW_MOD_CONTROL));
+    evt->Set(ctx, JS_STR("shiftKey"),JS_BOOL(mods & GLFW_MOD_SHIFT));
+    evt->Set(ctx, JS_STR("altKey"),JS_BOOL(mods & GLFW_MOD_ALT));
+    evt->Set(ctx, JS_STR("metaKey"),JS_BOOL(mods & GLFW_MOD_SUPER));
 
     int which=key, charCode=key;
 
@@ -340,9 +360,9 @@ void APIENTRY keyCB(GLFWwindow *window, int key, int scancode, int action, int m
     else if(key==GLFW_KEY_RIGHT_BRACKET)  key=221;// ]
     else if(key==GLFW_KEY_APOSTROPHE)  key=222;   // '
 
-    evt->Set(JS_STR("which"),JS_INT(which));
-    evt->Set(JS_STR("keyCode"),JS_INT(key));
-    evt->Set(JS_STR("charCode"),JS_INT(charCode));
+    evt->Set(ctx, JS_STR("which"),JS_INT(which));
+    evt->Set(ctx, JS_STR("keyCode"),JS_INT(key));
+    evt->Set(ctx, JS_STR("charCode"),JS_INT(charCode));
 
     Local<Value> argv[2] = {
       JS_STR(&actionNames[action << 3]), // event name
@@ -354,6 +374,8 @@ void APIENTRY keyCB(GLFWwindow *window, int key, int scancode, int action, int m
 }
 
 void APIENTRY cursorPosCB(GLFWwindow* window, double x, double y) {
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
   if(!TwEventMousePosGLFW(x,y)) {
     int w,h;
     glfwGetWindowSize(window, &w, &h);
@@ -366,11 +388,11 @@ void APIENTRY cursorPosCB(GLFWwindow* window, double x, double y) {
     Nan::HandleScope scope;
 
     Local<Array> evt=Nan::New<Array>(5);
-    evt->Set(JS_STR("type"),JS_STR("mousemove"));
-    evt->Set(JS_STR("pageX"),JS_NUM(x));
-    evt->Set(JS_STR("pageY"),JS_NUM(y));
-    evt->Set(JS_STR("x"),JS_NUM(x));
-    evt->Set(JS_STR("y"),JS_NUM(y));
+    evt->Set(ctx, JS_STR("type"),JS_STR("mousemove"));
+    evt->Set(ctx, JS_STR("pageX"),JS_NUM(x));
+    evt->Set(ctx, JS_STR("pageY"),JS_NUM(y));
+    evt->Set(ctx, JS_STR("x"),JS_NUM(x));
+    evt->Set(ctx, JS_STR("y"),JS_NUM(y));
 
     Local<Value> argv[2] = {
       JS_STR("mousemove"), // event name
@@ -384,9 +406,11 @@ void APIENTRY cursorPosCB(GLFWwindow* window, double x, double y) {
 void APIENTRY cursorEnterCB(GLFWwindow* window, int entered) {
   Nan::HandleScope scope;
 
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
   Local<Array> evt=Nan::New<Array>(2);
-  evt->Set(JS_STR("type"),JS_STR("mouseenter"));
-  evt->Set(JS_STR("entered"),JS_INT(entered));
+  evt->Set(ctx, JS_STR("type"),JS_STR("mouseenter"));
+  evt->Set(ctx, JS_STR("entered"),JS_INT(entered));
 
   Local<Value> argv[2] = {
     JS_STR("mouseenter"), // event name
@@ -399,14 +423,16 @@ void APIENTRY cursorEnterCB(GLFWwindow* window, int entered) {
 void APIENTRY mouseButtonCB(GLFWwindow *window, int button, int action, int mods) {
    if(!TwEventMouseButtonGLFW(button,action)) {
     Nan::HandleScope scope;
+    auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
     Local<Array> evt=Nan::New<Array>(7);
-    evt->Set(JS_STR("type"),JS_STR(action ? "mousedown" : "mouseup"));
-    evt->Set(JS_STR("button"),JS_INT(button));
-    evt->Set(JS_STR("which"),JS_INT(button));
-    evt->Set(JS_STR("x"),JS_INT(lastX));
-    evt->Set(JS_STR("y"),JS_INT(lastY));
-    evt->Set(JS_STR("pageX"),JS_INT(lastX));
-    evt->Set(JS_STR("pageY"),JS_INT(lastY));
+    evt->Set(ctx, JS_STR("type"),JS_STR(action ? "mousedown" : "mouseup"));
+    evt->Set(ctx, JS_STR("button"),JS_INT(button));
+    evt->Set(ctx, JS_STR("which"),JS_INT(button));
+    evt->Set(ctx, JS_STR("x"),JS_INT(lastX));
+    evt->Set(ctx, JS_STR("y"),JS_INT(lastY));
+    evt->Set(ctx, JS_STR("pageX"),JS_INT(lastX));
+    evt->Set(ctx, JS_STR("pageY"),JS_INT(lastY));
 
     Local<Value> argv[2] = {
       JS_STR(action ? "mousedown" : "mouseup"), // event name
@@ -421,11 +447,13 @@ void APIENTRY scrollCB(GLFWwindow *window, double xoffset, double yoffset) {
   if(!TwEventMouseWheelGLFW(yoffset)) {
     Nan::HandleScope scope;
 
+    auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
     Local<Array> evt=Nan::New<Array>(3);
-    evt->Set(JS_STR("type"),JS_STR("mousewheel"));
-    evt->Set(JS_STR("wheelDeltaX"),JS_NUM(xoffset*120));
-    evt->Set(JS_STR("wheelDeltaY"),JS_NUM(yoffset*120));
-    evt->Set(JS_STR("wheelDelta"),JS_NUM(yoffset*120));
+    evt->Set(ctx, JS_STR("type"),JS_STR("mousewheel"));
+    evt->Set(ctx, JS_STR("wheelDeltaX"),JS_NUM(xoffset*120));
+    evt->Set(ctx, JS_STR("wheelDeltaY"),JS_NUM(yoffset*120));
+    evt->Set(ctx, JS_STR("wheelDelta"),JS_NUM(yoffset*120));
 
     Local<Value> argv[2] = {
       JS_STR("mousewheel"), // event name
@@ -451,19 +479,21 @@ int APIENTRY windowCloseCB() {
 NAN_METHOD(testJoystick) {
   Nan::HandleScope scope;
 
-  int width = info[0]->Uint32Value();
-  int height = info[1]->Uint32Value();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  int width = info[0]->Uint32Value(ctx).ToChecked();
+  int height = info[1]->Uint32Value(ctx).ToChecked();
   float ratio = width / (float) height;
 
-  float translateX = info[2]->NumberValue();
-  float translateY = info[3]->NumberValue();
-  float translateZ = info[4]->NumberValue();
+  float translateX = info[2]->NumberValue(ctx).ToChecked();
+  float translateY = info[3]->NumberValue(ctx).ToChecked();
+  float translateZ = info[4]->NumberValue(ctx).ToChecked();
 
-  float rotateX = info[5]->NumberValue();
-  float rotateY = info[6]->NumberValue();
-  float rotateZ = info[7]->NumberValue();
+  float rotateX = info[5]->NumberValue(ctx).ToChecked();
+  float rotateY = info[6]->NumberValue(ctx).ToChecked();
+  float rotateZ = info[7]->NumberValue(ctx).ToChecked();
 
-  float angle = info[8]->NumberValue();
+  float angle = info[8]->NumberValue(ctx).ToChecked();
 
   glViewport(0, 0, width, height);
   glClear(GL_COLOR_BUFFER_BIT);
@@ -491,9 +521,12 @@ NAN_METHOD(testJoystick) {
 
 NAN_METHOD(testScene) {
   Nan::HandleScope scope;
-  int width = info[0]->Uint32Value();
-  int height = info[1]->Uint32Value();
-  float z = info.Length()>2 ? (float) info[2]->NumberValue() : 0;
+
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  int width = info[0]->Uint32Value(ctx).ToChecked();
+  int height = info[1]->Uint32Value(ctx).ToChecked();
+  float z = info.Length()>2 ? (float) info[2]->NumberValue(ctx).ToChecked() : 0;
   float ratio = width / (float) height;
 
   glViewport(0, 0, width, height);
@@ -521,8 +554,10 @@ NAN_METHOD(testScene) {
 
 NAN_METHOD(WindowHint) {
   Nan::HandleScope scope;
-  int target       = info[0]->Uint32Value();
-  int hint         = info[1]->Uint32Value();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  int target       = info[0]->Uint32Value(ctx).ToChecked();
+  int hint         = info[1]->Uint32Value(ctx).ToChecked();
   glfwWindowHint(target, hint);
   return;
 }
@@ -535,7 +570,9 @@ NAN_METHOD(DefaultWindowHints) {
 
 NAN_METHOD(JoystickPresent) {
   Nan::HandleScope scope;
-  int joy = info[0]->Uint32Value();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  int joy = info[0]->Uint32Value(ctx).ToChecked();
   bool isPresent = glfwJoystickPresent(joy);
   info.GetReturnValue().Set(JS_BOOL(isPresent));
 }
@@ -559,7 +596,9 @@ std::string buttonToString(unsigned char c) {
 
 NAN_METHOD(GetJoystickAxes) {
   Nan::HandleScope scope;
-  int joy = info[0]->Uint32Value();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+  
+  int joy = info[0]->Uint32Value(ctx).ToChecked();
   int count;
   const float *axisValues = glfwGetJoystickAxes(joy, &count);
   string response = "";
@@ -573,7 +612,9 @@ NAN_METHOD(GetJoystickAxes) {
 
 NAN_METHOD(GetJoystickButtons) {
   Nan::HandleScope scope;
-  int joy = info[0]->Uint32Value();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  int joy = info[0]->Uint32Value(ctx).ToChecked();
   int count = 0;
   const unsigned char* response = glfwGetJoystickButtons(joy, &count);
 
@@ -588,17 +629,23 @@ NAN_METHOD(GetJoystickButtons) {
 
 NAN_METHOD(GetJoystickName) {
   Nan::HandleScope scope;
-  int joy = info[0]->Uint32Value();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  int joy = info[0]->Uint32Value(ctx).ToChecked();
   const char* response = glfwGetJoystickName(joy);
   info.GetReturnValue().Set(JS_STR(response));
 }
 
 NAN_METHOD(glfw_CreateWindow) {
   Nan::HandleScope scope;
-  int width       = info[0]->Uint32Value();
-  int height      = info[1]->Uint32Value();
-  String::Utf8Value str(info[2]->ToString());
-  int monitor_idx = info[3]->Uint32Value();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  int width       = info[0]->Uint32Value(ctx).ToChecked();
+  int height      = info[1]->Uint32Value(ctx).ToChecked();
+  Local<String> str1 = info[2]->ToString(ctx).ToLocalChecked().As<String>();
+  String::Utf8Value str(v8::Isolate::GetCurrent(), str1);
+
+  int monitor_idx = info[3]->Uint32Value(ctx).ToChecked();
 
   GLFWwindow* window = NULL;
   GLFWmonitor **monitors = NULL, *monitor = NULL;
@@ -641,7 +688,7 @@ NAN_METHOD(glfw_CreateWindow) {
     glfwSetWindowSize(window, width,height);
 
   // Set callback functions
-  glfw_events.Reset( info.This()->Get(JS_STR("events"))->ToObject());
+  glfw_events.Reset( info.This()->Get(ctx, JS_STR("events")).ToLocalChecked().As<Function>());
 
   // window callbacks
   glfwSetWindowPosCallback( window, windowPosCB );
@@ -665,7 +712,9 @@ NAN_METHOD(glfw_CreateWindow) {
 
 NAN_METHOD(DestroyWindow) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
     glfwDestroyWindow(window);
@@ -675,8 +724,10 @@ NAN_METHOD(DestroyWindow) {
 
 NAN_METHOD(SetWindowTitle) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
-  String::Utf8Value str(info[1]->ToString());
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
+  String::Utf8Value str(v8::Isolate::GetCurrent(), info[1]->ToString(ctx).ToLocalChecked());
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
     glfwSetWindowTitle(window, *str);
@@ -686,14 +737,17 @@ NAN_METHOD(SetWindowTitle) {
 
 NAN_METHOD(GetWindowSize) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
+
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
   if(handle) {
     int w,h;
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
     glfwGetWindowSize(window, &w, &h);
     Local<Array> arr=Nan::New<Array>(2);
-    arr->Set(JS_STR("width"),JS_INT(w));
-    arr->Set(JS_STR("height"),JS_INT(h));
+    arr->Set(ctx, JS_STR("width"),JS_INT(w));
+    arr->Set(ctx, JS_STR("height"),JS_INT(h));
     info.GetReturnValue().Set(arr);
   }
   return;
@@ -701,34 +755,40 @@ NAN_METHOD(GetWindowSize) {
 
 NAN_METHOD(SetWindowSize) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
-    glfwSetWindowSize(window, info[1]->Uint32Value(),info[2]->Uint32Value());
+    glfwSetWindowSize(window, info[1]->Uint32Value(ctx).ToChecked(),info[2]->Uint32Value(ctx).ToChecked());
   }
   return;
 }
 
 NAN_METHOD(SetWindowPos) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
-    glfwSetWindowPos(window, info[1]->Uint32Value(),info[2]->Uint32Value());
+    glfwSetWindowPos(window, info[1]->Uint32Value(ctx).ToChecked(),info[2]->Uint32Value(ctx).ToChecked());
   }
   return;
 }
 
 NAN_METHOD(GetWindowPos) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
     int xpos, ypos;
     glfwGetWindowPos(window, &xpos, &ypos);
     Local<Array> arr=Nan::New<Array>(2);
-    arr->Set(JS_STR("xpos"),JS_INT(xpos));
-    arr->Set(JS_STR("ypos"),JS_INT(ypos));
+    arr->Set(ctx, JS_STR("xpos"),JS_INT(xpos));
+    arr->Set(ctx, JS_STR("ypos"),JS_INT(ypos));
     info.GetReturnValue().Set(arr);
   }
   return;
@@ -736,14 +796,16 @@ NAN_METHOD(GetWindowPos) {
 
 NAN_METHOD(GetFramebufferSize) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
     int width, height;
     glfwGetFramebufferSize(window, &width, &height);
     Local<Array> arr=Nan::New<Array>(2);
-    arr->Set(JS_STR("width"),JS_INT(width));
-    arr->Set(JS_STR("height"),JS_INT(height));
+    arr->Set(ctx, JS_STR("width"),JS_INT(width));
+    arr->Set(ctx, JS_STR("height"),JS_INT(height));
     info.GetReturnValue().Set(arr);
   }
   return;
@@ -751,7 +813,9 @@ NAN_METHOD(GetFramebufferSize) {
 
 NAN_METHOD(IconifyWindow) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
     glfwIconifyWindow(window);
@@ -761,7 +825,9 @@ NAN_METHOD(IconifyWindow) {
 
 NAN_METHOD(RestoreWindow) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
     glfwRestoreWindow(window);
@@ -771,7 +837,9 @@ NAN_METHOD(RestoreWindow) {
 
 NAN_METHOD(HideWindow) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
     glfwHideWindow(window);
@@ -781,7 +849,9 @@ NAN_METHOD(HideWindow) {
 
 NAN_METHOD(ShowWindow) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
     glfwShowWindow(window);
@@ -791,7 +861,9 @@ NAN_METHOD(ShowWindow) {
 
 NAN_METHOD(WindowShouldClose) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
     info.GetReturnValue().Set(JS_INT(glfwWindowShouldClose(window)));
@@ -801,8 +873,10 @@ NAN_METHOD(WindowShouldClose) {
 
 NAN_METHOD(SetWindowShouldClose) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
-  int value=info[1]->Uint32Value();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
+  int value=info[1]->Uint32Value(ctx).ToChecked();
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
     glfwSetWindowShouldClose(window, value);
@@ -812,8 +886,10 @@ NAN_METHOD(SetWindowShouldClose) {
 
 NAN_METHOD(GetWindowAttrib) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
-  int attrib=info[1]->Uint32Value();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
+  int attrib=info[1]->Uint32Value(ctx).ToChecked();
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
     info.GetReturnValue().Set(JS_INT(glfwGetWindowAttrib(window, attrib)));
@@ -836,8 +912,10 @@ NAN_METHOD(WaitEvents) {
 /* Input handling */
 NAN_METHOD(GetKey) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
-  int key=info[1]->Uint32Value();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
+  int key=info[1]->Uint32Value(ctx).ToChecked();
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
     info.GetReturnValue().Set(JS_INT(glfwGetKey(window, key)));
@@ -847,8 +925,10 @@ NAN_METHOD(GetKey) {
 
 NAN_METHOD(GetMouseButton) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
-  int button=info[1]->Uint32Value();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
+  int button=info[1]->Uint32Value(ctx).ToChecked();
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
     info.GetReturnValue().Set(JS_INT(glfwGetMouseButton(window, button)));
@@ -858,14 +938,16 @@ NAN_METHOD(GetMouseButton) {
 
 NAN_METHOD(GetCursorPos) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
     double x,y;
     glfwGetCursorPos(window, &x, &y);
     Local<Array> arr=Nan::New<Array>(2);
-    arr->Set(JS_STR("x"),JS_NUM(x));
-    arr->Set(JS_STR("y"),JS_NUM(y));
+    arr->Set(ctx, JS_STR("x"),JS_NUM(x));
+    arr->Set(ctx, JS_STR("y"),JS_NUM(y));
     info.GetReturnValue().Set(arr);
   }
   return;
@@ -873,9 +955,11 @@ NAN_METHOD(GetCursorPos) {
 
 NAN_METHOD(SetCursorPos) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
-  int x=info[1]->NumberValue();
-  int y=info[2]->NumberValue();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
+  int x=info[1]->NumberValue(ctx).ToChecked();
+  int y=info[2]->NumberValue(ctx).ToChecked();
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
     glfwSetCursorPos(window, x, y);
@@ -886,7 +970,9 @@ NAN_METHOD(SetCursorPos) {
 /* @Module Context handling */
 NAN_METHOD(MakeContextCurrent) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
     glfwMakeContextCurrent(window);
@@ -896,13 +982,17 @@ NAN_METHOD(MakeContextCurrent) {
 
 NAN_METHOD(GetCurrentContext) {
   Nan::HandleScope scope;
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
   GLFWwindow* window=glfwGetCurrentContext();
   info.GetReturnValue().Set(JS_NUM((uint64_t) window));
 }
 
 NAN_METHOD(SwapBuffers) {
   Nan::HandleScope scope;
-  uint64_t handle=info[0]->IntegerValue();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  uint64_t handle=info[0]->IntegerValue(ctx).ToChecked();
   if(handle) {
     GLFWwindow* window = reinterpret_cast<GLFWwindow*>(handle);
     glfwSwapBuffers(window);
@@ -912,7 +1002,9 @@ NAN_METHOD(SwapBuffers) {
 
 NAN_METHOD(SwapInterval) {
   Nan::HandleScope scope;
-  int interval=info[0]->Int32Value();
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  int interval=info[0]->Int32Value(ctx).ToChecked();
   glfwSwapInterval(interval);
   return;
 }
@@ -920,7 +1012,9 @@ NAN_METHOD(SwapInterval) {
 /* Extension support */
 NAN_METHOD(ExtensionSupported) {
   Nan::HandleScope scope;
-  String::Utf8Value str(info[0]->ToString());
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
+  String::Utf8Value str(v8::Isolate::GetCurrent(), info[0]->ToString(ctx).ToLocalChecked());
   info.GetReturnValue().Set(JS_BOOL(glfwExtensionSupported(*str)==1));
 }
 
@@ -937,7 +1031,7 @@ void AtExit() {
 // bindings
 //
 ///////////////////////////////////////////////////////////////////////////////
-#define JS_GLFW_CONSTANT(name) target->Set(JS_STR( #name ), JS_INT(GLFW_ ## name))
+#define JS_GLFW_CONSTANT(name) target->Set(ctx, JS_STR( #name ), JS_INT(GLFW_ ## name))
 #define JS_GLFW_SET_METHOD(name) Nan::SetMethod(target, #name , glfw::name);
 
 extern "C" {
@@ -946,6 +1040,8 @@ NAN_MODULE_INIT(init)
   atexit(glfw::AtExit);
 
   Nan::HandleScope scope;
+  auto ctx = v8::Isolate::GetCurrent()->GetCurrentContext();
+
 
   /* GLFW initialization, termination and version querying */
   JS_GLFW_SET_METHOD(Init);

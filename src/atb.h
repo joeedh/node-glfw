@@ -12,6 +12,8 @@
 #include <vector>
 #include <cstdlib>
 
+#include "windows.h"
+
 using namespace v8;
 using namespace node;
 
@@ -45,7 +47,7 @@ protected:
   virtual ~Bar ();
 
 private:
-  Bar(Handle<Object> wrapper);
+  Bar(Local<Object> wrapper);
   static Nan::Persistent<Function> constructor_template;
 
   TwBar *bar;
@@ -70,7 +72,7 @@ protected:
   virtual ~AntTweakBar ();
 
 private:
-  AntTweakBar(Handle<Object> wrapper);
+  AntTweakBar(Local<Object> wrapper);
   static Nan::Persistent<Function> constructor_template;
 };
 
